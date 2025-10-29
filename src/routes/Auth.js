@@ -14,6 +14,9 @@ authRouter.post('/user',async(req,res)=>{
             firstName,lastName,email,password:passwordHash
         })
         await newuser.save();
+        const token = await newuser.getJWT();
+        console.log(token)
+        res.cookie("token",token);
         console.log(newuser);
         res.status(201).json({message:"User created successfully",user:newuser});
     }catch(err){
@@ -39,13 +42,18 @@ authRouter.post('/login',async(req,res)=>{
         res.status(500).json({message:"Internal server error",error:err.message});
     }
 })
-authRouter.post('/logout/',async(req,res)=>{
+authRouter.post('/logout',async(req,res)=>{
     try{
         const {token}=req.cookies;
         if(!token){
             return res.json({message:"No token found"});
         }
-        res.clearCookie('token');
+        res.clearCookie('token', {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "lax",
+});
+
         res.json({message:"Logout successful"});
     }catch(err){
         res.send("Error in logout"+err.message)
