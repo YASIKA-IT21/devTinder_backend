@@ -1,5 +1,6 @@
 const express = require("express");
 const userRouter = express.Router();
+const Chat=require('../models/chat');
 const userAuth = require("../middleware/Auth.js")
 const user =require("../models/user.js")
 const connectionRequest = require("../models/connectionRequest.js");
@@ -11,7 +12,7 @@ userRouter.get('/user/requests',userAuth,async(req,res)=>{
         const requests = await connectionRequest.find({
             touserId:loggeduserid,
             status:"interested"
-        }).populate('fromuserId',['firstName','lastName']);
+        }).populate('fromuserId',['firstName','lastName','photoUrl','about','age']);
         if(requests.length===0||!requests){
             res.status(400).send("No requests found");
 
@@ -32,18 +33,31 @@ userRouter.get('/user/connections',userAuth,async(req,res)=>{
                 {fromuserId:loggeduserid,status:"accepted"},
                 {touserId:loggeduserid,status:"accepted"}
             ]
-        }).populate('fromuserId',['firstName','lastName','gender','age','photoUrl']).populate('touserId',['firstName','lastName','gender','age','photoUrl'])
-        const data = connections.map((row)=>{
-            if(row.fromuserId._id.toString()===loggeduserid.toString()){
-                return row.touserId;
-            }else{
-                return row.fromuserId;
-            }
+        }).populate('fromuserId',['firstName','lastName','gender','age','photoUrl','about']).populate('touserId',['firstName','lastName','gender','age','photoUrl','about'])
+        const data = await Promise.all(
+      connections.map(async (row) => {
+        const otherUser =
+          row.fromuserId._id.toString() === loggeduserid.toString()
+            ? row.touserId
+            : row.fromuserId;
 
-        }
+        // 3️⃣ Count unread messages from this user to the logged-in user
+        const unreadCount = await Chat.countDocuments({
+          sender: otherUser._id,
+          receiver: loggeduserid,
+          read: false,
+        });
+
+        // 4️⃣ Return user info + unread count
+        return {
+          ...otherUser.toObject(),
+          unreadCount,
+        };
+      })
+    );
             
 
-        );
+        
         res.send({message:"Connections found",data:data});
 
     }catch(err){
@@ -83,4 +97,22 @@ userRouter.get('/user/feed',userAuth,async(req,res)=>{
 
     }
 })
+userRouter.get("/user/:id", userAuth, async (req, res) => {
+  try {
+    const userId = req.params.id;
+
+    // ✅ use capitalized 'User' model
+    const foundUser = await user.findById(userId);
+
+    if (!foundUser) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    res.status(200).json({ user: foundUser });
+  } catch (err) {
+    console.error("Error fetching user:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports=userRouter;
